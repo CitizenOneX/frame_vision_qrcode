@@ -64,12 +64,16 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
         // synchronously await the image response
         Uint8List imageData = await imageDataResponse(frame!.dataResponse, _qualityValues[_qualityIndex].toInt()).first;
-
-        // received a whole-image Uint8List with jpeg header and footer included
         _stopwatch.stop();
 
+        // received a whole-image Uint8List with jpeg header and footer included
+        // note: the image from the Frame camera is rotated clockwise 90 degrees. The barcode/qrcode scanner might be
+        // one of the few vision apps that are not affected by this, so for now don't rotate the image as a preprocessing step
+
         try {
-          Image im = Image.memory(imageData, gaplessPlayback: true,);
+
+          // Widget UI
+          Image imWidget = Image.memory(imageData, gaplessPlayback: true,);
 
           // add the size and elapsed time to the image metadata widget
           meta.size = imageData.length;
@@ -78,7 +82,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           _log.fine('Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
 
           setState(() {
-            _image = im;
+            _image = imWidget;
             _imageMeta = meta;
           });
 

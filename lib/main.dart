@@ -78,94 +78,69 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         _stopwatch.stop();
 
         // received a whole-image Uint8List with jpeg header and footer included
-        // note: the image from the Frame camera is rotated clockwise 90 degrees. The barcode/qrcode scanner might be
-        // one of the few vision apps that are not affected by this, so for now don't rotate the image as a preprocessing step
+        // note: the image from the Frame camera is rotated clockwise 90 degrees.
+        // Some vision apps will be affected by this, so in those cases either pass in orientation metadata
+        // or rotate the image data back to upright.
+        // MLKit accepts orientation metadata in its InputImage constructor, so we save the time baking in a rotation.
 
+        // Widget UI
+        Image imWidget = Image.memory(imageData, gaplessPlayback: true,);
+
+        // add the size and elapsed time to the image metadata widget
+        meta.size = imageData.length;
+        meta.elapsedTimeMs = _stopwatch.elapsedMilliseconds;
+
+        _log.info('Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
+
+        setState(() {
+          _image = imWidget;
+          _imageMeta = meta;
+        });
+
+        // Perform vision processing pipeline
         try {
-          img.Image? im = img.decodeJpg(imageData);
-          _log.info('Image after decode from jpg: $im');
+          // will sometimes throw an Exception on decoding, but doesn't return null
+          _stopwatch.reset();
+          _stopwatch.start();
+          img.Image im = img.decodeJpg(imageData)!;
+          _stopwatch.stop();
+          _log.info('Jpeg decoding took: ${_stopwatch.elapsedMilliseconds} ms');
 
-          if (im == null) {
-            _log.severe('Unable to decode jpg');
-            continue;
-          }
+          // Android mlkit needs NV21 InputImage format
+          // iOS mlkit needs bgra8888 InputImage format
+          // In both cases orientation metadata is passed to mlkit, so no need to bake in a rotation
+          _stopwatch.reset();
+          _stopwatch.start();
+          InputImage mlkitImage = Platform.isAndroid ? rgbImageToNv21InputImage(im) : rgbImageToBgra8888InputImage(im);
+          _stopwatch.stop();
+          _log.info('NV21/BGRA8888 conversion took: ${_stopwatch.elapsedMilliseconds} ms');
 
-          InputImage mlkitImage;
-
-          if (Platform.isAndroid) {
-            // Android mlkit needs NV21 InputImage format
-            // this function wants an img.Image with rgb-formatted uint8 pixels, in Frame camera orientation (i.e. rotated 90 degrees clockwise) - mlkit will reverse the rotation
-            mlkitImage = rgbImageToInputImage(im);
-            _log.info('Image converted to mlkit InputImage: ${mlkitImage.metadata!.size}');
-          }
-          else {
-            // iOS mlkit needs bgra8888 InputImage format
-            // TODO untested
-
-            // add in the alpha channel
-            var convertedIm = im.convert(numChannels: 4);
-
-            // swap the order of the channels to what InputImage needs
-            convertedIm.remapChannels(img.ChannelOrder.bgra);
-
-            // convert to mlkit's preferred image format for iOS
-            mlkitImage = InputImage.fromBytes(
-                                  bytes: convertedIm.buffer.asUint8List(),
-                                  metadata: InputImageMetadata(size: const Size(512, 512),
-                                  rotation: InputImageRotation.rotation90deg,
-                                  format: InputImageFormat.bgra8888,
-                                  bytesPerRow: 512*4));
-          }
-
-          _log.info('About to process the image');
+          // run the qrcode/barcode detector
+          _stopwatch.reset();
+          _stopwatch.start();
           final List<Barcode> barcodes = await barcodeScanner.processImage(mlkitImage);
+          _stopwatch.stop();
+          _log.info('Barcode scanning took: ${_stopwatch.elapsedMilliseconds} ms');
 
+          // loop over any codes found
           for (Barcode barcode in barcodes) {
-            _log.info('Barcode found: ${barcode.type.name} ${barcode.displayValue} ${barcode.rawValue}');
 
-            final BarcodeType type = barcode.type;
-            final Rect boundingBox = barcode.boundingBox;
-            final String? displayValue = barcode.displayValue;
-            final String? rawValue = barcode.rawValue;
-
-            // See API reference for complete list of supported types
-            if (type case BarcodeType.url) {
+            if (barcode.type case BarcodeType.url) {
               final barcodeUrl = barcode.value as BarcodeUrl;
-              _log.info('Barcode URL: ${barcodeUrl.title} ${barcodeUrl.url}');
+              _log.info('Barcode found (URL): ${barcodeUrl.url}');
               // TODO print URL on Frame and ListView
               // open URL on phone in browser
               break;
             }
             else {
               // just print data on Frame, in ListView
+              _log.info('Barcode found: ${barcode.type.name} ${barcode.displayValue} ${barcode.rawValue}');
             }
           }
-
-          // Widget UI
-          //Image imWidget = Image.memory(imageData, gaplessPlayback: true,);
           // TODO, for now convert it back to make sure our nv21 looks good
-          var nv21 = convert_native.ConvertNativeImgStream();
-          _log.info('MLKit Image Bytes: ${mlkitImage.bytes!.length}');
-          Uint8List reconstructedJpg = (await nv21.convertImgToBytes(mlkitImage.bytes!, 512, 512, rotationFix: 0))!;
-          _log.info('Reconstructed Image Bytes: ${reconstructedJpg.length}');
-
-          var reconstructedImg = img.decodeJpg(reconstructedJpg);
-          _log.info('Reconstructed Image: $reconstructedImg');
-
-          Image imWidget = Image.memory(reconstructedJpg, gaplessPlayback: true,);
-
-          // add the size and elapsed time to the image metadata widget
-          meta.size = imageData.length;
-          meta.elapsedTimeMs = _stopwatch.elapsedMilliseconds;
-
-          _log.fine('Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
-
-          setState(() {
-            _image = imWidget;
-            _imageMeta = meta;
-          });
-
-          // Perform vision processing pipeline
+          // var nv21 = convert_native.ConvertNativeImgStream();
+          // Uint8List reconstructedJpg = (await nv21.convertImgToBytes(mlkitImage.bytes!, 512, 512, rotationFix: 0))!;
+          // Image imWidget = Image.memory(reconstructedJpg, gaplessPlayback: true,);
 
         } catch (e) {
           _log.severe('Error converting bytes to image: $e');

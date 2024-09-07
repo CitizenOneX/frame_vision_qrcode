@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:convert_native_img_stream/convert_native_img_stream.dart' as convert_native;
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'package:image/image.dart' as img;
@@ -137,10 +136,11 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
               _log.info('Barcode found: ${barcode.type.name} ${barcode.displayValue} ${barcode.rawValue}');
             }
           }
-          // TODO, for now convert it back to make sure our nv21 looks good
-          // var nv21 = convert_native.ConvertNativeImgStream();
-          // Uint8List reconstructedJpg = (await nv21.convertImgToBytes(mlkitImage.bytes!, 512, 512, rotationFix: 0))!;
-          // Image imWidget = Image.memory(reconstructedJpg, gaplessPlayback: true,);
+
+          if (barcodes.isNotEmpty) {
+            currentState = ApplicationState.canceling;
+            if (mounted) setState(() {});
+          }
 
         } catch (e) {
           _log.severe('Error converting bytes to image: $e');
@@ -153,12 +153,15 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
 
     // clean up the barcode Scanner resources
     barcodeScanner.close();
+
+    ApplicationState.ready;
+    if (mounted) setState(() {});
   }
 
   /// cancel the current photo
   @override
   Future<void> cancel() async {
-    currentState = ApplicationState.ready;
+    currentState = ApplicationState.canceling;
     if (mounted) setState(() {});
   }
 

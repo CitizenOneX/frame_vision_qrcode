@@ -10,7 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_blue_plus: ^1.32.7
+  google_mlkit_barcode_scanning: ^0.12.0
+  image: ^4.2.0
   logging: ^1.2.0
+  convert_native_img_stream: ^0.0.1
 
 dev_dependencies:
   flutter_test:

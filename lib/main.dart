@@ -1,11 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:convert_native_img_stream/convert_native_img_stream.dart' as convert_native;
 import 'package:flutter/material.dart';
-import 'image_data_response.dart';
+import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
+import 'package:image/image.dart' as img;
 import 'package:logging/logging.dart';
+
 import 'camera.dart';
+import 'image_data_response.dart';
+import 'mlkit_image_converter.dart';
 import 'simple_frame_app.dart';
 
 void main() => runApp(const MainApp());
@@ -20,6 +26,7 @@ class MainApp extends StatefulWidget {
 }
 
 class MainAppState extends State<MainApp> with SimpleFrameAppState {
+  late BarcodeScanner barcodeScanner;
 
   // the image and metadata to show
   Image? _image;
@@ -50,11 +57,15 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     currentState = ApplicationState.running;
     if (mounted) setState(() {});
 
+    // set up the Barcode Scanner
+    final List<BarcodeFormat> formats = [BarcodeFormat.all];
+    final barcodeScanner = BarcodeScanner(formats: formats);
+
     // keep looping, taking photos and displaying, until user clicks cancel
     while (currentState == ApplicationState.running) {
 
       try {
-        // the image data as a list of bytes that accumulates with each packet
+        // the image metadata (camera settings) to show under the image
         ImageMetadata meta = ImageMetadata(_qualityValues[_qualityIndex].toInt(), _autoExpGainTimes, _meteringModeValues[_meteringModeIndex], _exposure, _shutterKp, _shutterLimit, _gainKp, _gainLimit);
 
         // send the lua command to request a photo from the Frame
@@ -71,9 +82,77 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         // one of the few vision apps that are not affected by this, so for now don't rotate the image as a preprocessing step
 
         try {
+          img.Image? im = img.decodeJpg(imageData);
+          _log.info('Image after decode from jpg: $im');
+
+          if (im == null) {
+            _log.severe('Unable to decode jpg');
+            continue;
+          }
+
+          InputImage mlkitImage;
+
+          if (Platform.isAndroid) {
+            // Android mlkit needs NV21 InputImage format
+            // this function wants an img.Image with rgb-formatted uint8 pixels, in Frame camera orientation (i.e. rotated 90 degrees clockwise) - mlkit will reverse the rotation
+            mlkitImage = rgbImageToInputImage(im);
+            _log.info('Image converted to mlkit InputImage: ${mlkitImage.metadata!.size}');
+          }
+          else {
+            // iOS mlkit needs bgra8888 InputImage format
+            // TODO untested
+
+            // add in the alpha channel
+            var convertedIm = im.convert(numChannels: 4);
+
+            // swap the order of the channels to what InputImage needs
+            convertedIm.remapChannels(img.ChannelOrder.bgra);
+
+            // convert to mlkit's preferred image format for iOS
+            mlkitImage = InputImage.fromBytes(
+                                  bytes: convertedIm.buffer.asUint8List(),
+                                  metadata: InputImageMetadata(size: const Size(512, 512),
+                                  rotation: InputImageRotation.rotation90deg,
+                                  format: InputImageFormat.bgra8888,
+                                  bytesPerRow: 512*4));
+          }
+
+          _log.info('About to process the image');
+          final List<Barcode> barcodes = await barcodeScanner.processImage(mlkitImage);
+
+          for (Barcode barcode in barcodes) {
+            _log.info('Barcode found: ${barcode.type.name} ${barcode.displayValue} ${barcode.rawValue}');
+
+            final BarcodeType type = barcode.type;
+            final Rect boundingBox = barcode.boundingBox;
+            final String? displayValue = barcode.displayValue;
+            final String? rawValue = barcode.rawValue;
+
+            // See API reference for complete list of supported types
+            if (type case BarcodeType.url) {
+              final barcodeUrl = barcode.value as BarcodeUrl;
+              _log.info('Barcode URL: ${barcodeUrl.title} ${barcodeUrl.url}');
+              // TODO print URL on Frame and ListView
+              // open URL on phone in browser
+              break;
+            }
+            else {
+              // just print data on Frame, in ListView
+            }
+          }
 
           // Widget UI
-          Image imWidget = Image.memory(imageData, gaplessPlayback: true,);
+          //Image imWidget = Image.memory(imageData, gaplessPlayback: true,);
+          // TODO, for now convert it back to make sure our nv21 looks good
+          var nv21 = convert_native.ConvertNativeImgStream();
+          _log.info('MLKit Image Bytes: ${mlkitImage.bytes!.length}');
+          Uint8List reconstructedJpg = (await nv21.convertImgToBytes(mlkitImage.bytes!, 512, 512, rotationFix: 0))!;
+          _log.info('Reconstructed Image Bytes: ${reconstructedJpg.length}');
+
+          var reconstructedImg = img.decodeJpg(reconstructedJpg);
+          _log.info('Reconstructed Image: $reconstructedImg');
+
+          Image imWidget = Image.memory(reconstructedJpg, gaplessPlayback: true,);
 
           // add the size and elapsed time to the image metadata widget
           meta.size = imageData.length;
@@ -96,6 +175,9 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         _log.severe('Error executing application: $e');
       }
     }
+
+    // clean up the barcode Scanner resources
+    barcodeScanner.close();
   }
 
   /// cancel the current photo

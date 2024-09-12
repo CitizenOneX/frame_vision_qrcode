@@ -142,6 +142,9 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
             if (mounted) setState(() {});
           }
 
+          // TODO for the moment just slow down the rate of photos
+          await Future.delayed(const Duration(seconds: 5));
+
         } catch (e) {
           _log.severe('Error converting bytes to image: $e');
         }

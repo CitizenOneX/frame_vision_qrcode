@@ -1,17 +1,15 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'package:image/image.dart' as img;
+import 'package:image_mlkit_converter/image_mlkit_converter.dart';
 import 'package:logging/logging.dart';
 import 'package:simple_frame_app/camera_settings.dart';
 import 'package:simple_frame_app/image_data_response.dart';
 import 'package:simple_frame_app/simple_frame_app.dart';
-
-import 'mlkit_image_converter.dart';
 
 void main() => runApp(const MainApp());
 
@@ -80,7 +78,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         // note: the image from the Frame camera is rotated clockwise 90 degrees.
         // Some vision apps will be affected by this, so in those cases either pass in orientation metadata
         // or rotate the image data back to upright.
-        // MLKit accepts orientation metadata in its InputImage constructor, so we save the time baking in a rotation.
+        // MLKit accepts orientation metadata in its InputImage constructor, so we save time by not needing to bake in a rotation.
 
         // Widget UI
         Image imWidget = Image.memory(imageData, gaplessPlayback: true,);
@@ -110,7 +108,8 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           // In both cases orientation metadata is passed to mlkit, so no need to bake in a rotation
           _stopwatch.reset();
           _stopwatch.start();
-          InputImage mlkitImage = Platform.isAndroid ? rgbImageToNv21InputImage(im) : rgbImageToBgra8888InputImage(im);
+          // Frame images are rotated 90 degrees clockwise
+          InputImage mlkitImage = ImageMlkitConverter.imageToMlkitInputImage(im, InputImageRotation.rotation90deg);
           _stopwatch.stop();
           _log.info('NV21/BGRA8888 conversion took: ${_stopwatch.elapsedMilliseconds} ms');
 
@@ -171,11 +170,11 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Frame Vision',
+      title: 'Frame QRcode/Barcode Reader',
       theme: ThemeData.dark(),
       home: Scaffold(
         appBar: AppBar(
-          title: const Text("Frame Vision"),
+          title: const Text('Frame QRcode/Barcode Reader'),
           actions: [getBatteryWidget()]
         ),
         drawer: Drawer(

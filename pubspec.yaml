@@ -9,9 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  google_mlkit_commons: ^0.7.1
   google_mlkit_barcode_scanning: ^0.12.0
   image: ^4.0.14
+  image_mlkit_converter:
+    git: https://github.com/CitizenOneX/image_mlkit_converter.git
   logging: ^1.2.0
   simple_frame_app:
     git: https://github.com/CitizenOneX/simple_frame_app.git

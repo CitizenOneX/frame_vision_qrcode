@@ -7,11 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'package:image/image.dart' as img;
 import 'package:logging/logging.dart';
+import 'package:simple_frame_app/camera_settings.dart';
+import 'package:simple_frame_app/image_data_response.dart';
+import 'package:simple_frame_app/simple_frame_app.dart';
 
-import 'camera.dart';
-import 'image_data_response.dart';
 import 'mlkit_image_converter.dart';
-import 'simple_frame_app.dart';
 
 void main() => runApp(const MainApp());
 

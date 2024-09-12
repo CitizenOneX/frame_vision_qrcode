@@ -118,11 +118,10 @@ packages:
   image_mlkit_converter:
     dependency: "direct main"
     description:
-      path: "."
-      ref: HEAD
-      resolved-ref: "95397dc78999d1d067f3304b2a8b5d804eafe01a"
-      url: "https://github.com/CitizenOneX/image_mlkit_converter.git"
-    source: git
+      name: image_mlkit_converter
+      sha256: "61128832c52254a03a4410ed27f5d75eb6455e5236547d84bfd3ced1be08824f"
+      url: "https://pub.dev"
+    source: hosted
     version: "0.0.1"
   leak_tracker:
     dependency: transitive

@@ -13,8 +13,7 @@ dependencies:
   image: ^4.0.14
   image_mlkit_converter: ^0.0.1
   logging: ^1.2.0
-  simple_frame_app:
-    git: https://github.com/CitizenOneX/simple_frame_app.git
+  simple_frame_app: ^0.0.7
 
 dev_dependencies:
   flutter_test:

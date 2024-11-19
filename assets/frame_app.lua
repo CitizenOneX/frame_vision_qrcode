@@ -1,12 +1,15 @@
 local data = require('data.min')
 local battery = require('battery.min')
 local camera = require('camera.min')
+local plain_text = require('plain_text.min')
 
 -- Phone to Frame flags
 CAMERA_SETTINGS_MSG = 0x0d
+TEXT_MSG = 0x12
 
 -- register the message parser so it's automatically called when matching data comes in
 data.parsers[CAMERA_SETTINGS_MSG] = camera.parse_camera_settings
+data.parsers[TEXT_MSG] = plain_text.parse_plain_text
 
 function clear_display()
     frame.display.text(" ", 1, 1)
@@ -24,6 +27,7 @@ function app_loop()
 		local items_ready = data.process_raw_items()
 
 		if items_ready > 0 then
+
 			if (data.app_data[CAMERA_SETTINGS_MSG] ~= nil) then
 				rc, err = pcall(camera.camera_capture_and_send, data.app_data[CAMERA_SETTINGS_MSG])
 
@@ -31,6 +35,18 @@ function app_loop()
 					print(err)
 				end
 			end
+
+			if (data.app_data[TEXT_MSG] ~= nil and data.app_data[TEXT_MSG].string ~= nil) then
+				local i = 0
+				for line in data.app_data[TEXT_MSG].string:gmatch("([^\n]*)\n?") do
+					if line ~= "" then
+						frame.display.text(line, 1, i * 60 + 1)
+						i = i + 1
+					end
+				end
+				frame.display.show()
+			end
+
 		end
 
         -- periodic battery level updates, 120s for a camera app

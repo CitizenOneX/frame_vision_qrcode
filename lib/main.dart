@@ -8,8 +8,9 @@ import 'package:image/image.dart' as img;
 import 'package:image_mlkit_converter/image_mlkit_converter.dart';
 import 'package:logging/logging.dart';
 import 'package:simple_frame_app/tx/camera_settings.dart';
-import 'package:simple_frame_app/image_data_response.dart';
+import 'package:simple_frame_app/rx/photo.dart';
 import 'package:simple_frame_app/simple_frame_app.dart';
+import 'package:simple_frame_app/tx/plain_text.dart';
 
 void main() => runApp(const MainApp());
 
@@ -23,23 +24,27 @@ class MainApp extends StatefulWidget {
 }
 
 class MainAppState extends State<MainApp> with SimpleFrameAppState {
+  // the Google ML Kit barcode scanner
   late BarcodeScanner barcodeScanner;
 
   // the image and metadata to show
   Image? _image;
   ImageMetadata? _imageMeta;
+  List<Barcode> _codesFound = [];
+
   final Stopwatch _stopwatch = Stopwatch();
 
   // camera settings
-  int _qualityIndex = 0;
+  int _qualityIndex = 2;
   final List<double> _qualityValues = [10, 25, 50, 100];
   int _meteringIndex = 2;
   final List<String> _meteringValues = ['SPOT', 'CENTER_WEIGHTED', 'AVERAGE'];
-  int _autoExpGainTimes = 1; // val >= 0; number of times auto exposure and gain algorithm will be run every 100ms
+  int _autoExpGainTimes = 2; // val >= 0; number of times auto exposure and gain algorithm will be run (every 100ms)
+  final int _autoExpInterval = 100; // 0<= val <= 255; sleep time between runs of the autoexposure algorithm
   double _exposure = 0.18; // 0.0 <= val <= 1.0
   double _exposureSpeed = 0.5;  // 0.0 <= val <= 1.0
-  int _shutterLimit = 800; // 4 < val < 16383
-  int _analogGainLimit = 248;     // 0 <= val <= 248
+  int _shutterLimit = 16383; // 4 < val < 16383
+  int _analogGainLimit = 1;     // 0 <= val <= 248 TODO actually firmware requires 1.0 <= val <= 248.0
   double _whiteBalanceSpeed = 0.5;  // 0.0 <= val <= 1.0
 
   MainAppState() {
@@ -57,6 +62,8 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     // set up the Barcode Scanner
     final List<BarcodeFormat> formats = [BarcodeFormat.all];
     final barcodeScanner = BarcodeScanner(formats: formats);
+    _codesFound.clear();
+    await frame!.sendMessage(TxPlainText(msgCode: 0x12, text: ' '));
 
     // keep looping, taking photos and displaying, until user clicks cancel
     while (currentState == ApplicationState.running) {
@@ -68,20 +75,24 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         // send the lua command to request a photo from the Frame
         _stopwatch.reset();
         _stopwatch.start();
-        await frame!.sendMessage(TxCameraSettings(
+
+        var txcs = TxCameraSettings(
           msgCode: 0x0d,
           qualityIndex: _qualityIndex,
           autoExpGainTimes: _autoExpGainTimes,
+          autoExpInterval: _autoExpInterval,
           meteringIndex: _meteringIndex,
           exposure: _exposure,
           exposureSpeed: _exposureSpeed,
           shutterLimit: _shutterLimit,
           analogGainLimit: _analogGainLimit,
           whiteBalanceSpeed: _whiteBalanceSpeed,
-        ));
+        );
+
+        await frame!.sendMessage(txcs);
 
         // synchronously await the image response
-        Uint8List imageData = await imageDataResponse(frame!.dataResponse, _qualityValues[_qualityIndex].toInt()).first;
+        Uint8List imageData = await RxPhoto(qualityLevel: _qualityValues[_qualityIndex].toInt()).attach(frame!.dataResponse).first;
         _stopwatch.stop();
 
         // received a whole-image Uint8List with jpeg header and footer included
@@ -97,7 +108,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         meta.size = imageData.length;
         meta.elapsedTimeMs = _stopwatch.elapsedMilliseconds;
 
-        _log.info('Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
+        _log.info(() => 'Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
 
         setState(() {
           _image = imWidget;
@@ -111,7 +122,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           _stopwatch.start();
           img.Image im = img.decodeJpg(imageData)!;
           _stopwatch.stop();
-          _log.info('Jpeg decoding took: ${_stopwatch.elapsedMilliseconds} ms');
+          _log.info(() => 'Jpeg decoding took: ${_stopwatch.elapsedMilliseconds} ms');
 
           // Android mlkit needs NV21 InputImage format
           // iOS mlkit needs bgra8888 InputImage format
@@ -121,39 +132,44 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           // Frame images are rotated 90 degrees clockwise
           InputImage mlkitImage = ImageMlkitConverter.imageToMlkitInputImage(im, InputImageRotation.rotation90deg);
           _stopwatch.stop();
-          _log.info('NV21/BGRA8888 conversion took: ${_stopwatch.elapsedMilliseconds} ms');
+          _log.info(() => 'NV21/BGRA8888 conversion took: ${_stopwatch.elapsedMilliseconds} ms');
 
           // run the qrcode/barcode detector
           _stopwatch.reset();
           _stopwatch.start();
-          final List<Barcode> barcodes = await barcodeScanner.processImage(mlkitImage);
+          _codesFound = await barcodeScanner.processImage(mlkitImage);
           _stopwatch.stop();
-          _log.info('Barcode scanning took: ${_stopwatch.elapsedMilliseconds} ms');
+          _log.info(() => 'Barcode scanning took: ${_stopwatch.elapsedMilliseconds} ms');
 
-          // loop over any codes found
-          for (Barcode barcode in barcodes) {
+          // stop the running loop if a barcode has been found
+          if (_codesFound.isNotEmpty) {
 
-            if (barcode.type case BarcodeType.url) {
-              final barcodeUrl = barcode.value as BarcodeUrl;
-              _log.info('Barcode found (URL): ${barcodeUrl.url}');
-              // TODO print URL on Frame and ListView
-              // open URL on phone in browser
-              break;
+            List<String> frameText = [];
+            // loop over any codes found
+            for (Barcode barcode in _codesFound) {
+
+              if (barcode.type case BarcodeType.url) {
+                final barcodeUrl = barcode.value as BarcodeUrl;
+                frameText.add('${barcode.type.name}: ${barcodeUrl.url}');
+              }
+              else {
+                frameText.add('${barcode.type.name}: ${barcode.displayValue}');
+              }
             }
-            else {
-              // just print data on Frame, in ListView
-              _log.info('Barcode found: ${barcode.type.name} ${barcode.displayValue} ${barcode.rawValue}');
-            }
-          }
 
-          if (barcodes.isNotEmpty) {
-            currentState = ApplicationState.canceling;
-            if (mounted) setState(() {});
+            // print the detected barcodes on the Frame display
+            await frame!.sendMessage(TxPlainText(msgCode: 0x12, text: frameText.join('\n')));
+
+            // TODO url: print URL on Frame, display clickable in ListView to open URL on phone in browser
+            // TODO non-url: just print data on Frame, in ListView
+            _log.info(_codesFound);
+
+            setState(() {
+              currentState = ApplicationState.canceling;
+            });
+
             break;
           }
-
-          // TODO for the moment just slow down the rate of photos
-          await Future.delayed(const Duration(seconds: 5));
 
         } catch (e) {
           _log.severe('Error converting bytes to image: $e');
@@ -165,10 +181,11 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
     }
 
     // clean up the barcode Scanner resources
-    barcodeScanner.close();
+    await barcodeScanner.close();
 
-    ApplicationState.ready;
-    if (mounted) setState(() {});
+    setState(() {
+      currentState = ApplicationState.ready;
+    });
   }
 
   /// cancel the current photo
@@ -331,6 +348,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Transform(
                     alignment: Alignment.center,
@@ -345,6 +363,19 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
               )
             ),
             const Divider(),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _codesFound.length,
+                itemBuilder:(context, index) {
+                   return ListTile(
+                    title: _codesFound[index].type is BarcodeUrl ?
+                      Text((_codesFound[index].value! as BarcodeUrl).url!) :
+                      Text(_codesFound[index].displayValue ?? ''),
+                    subtitle: Text(_codesFound[index].type.name),
+                  );
+                }
+              ),
+            ),
           ],
         ),
         floatingActionButton: getFloatingActionButtonWidget(const Icon(Icons.camera_alt), const Icon(Icons.cancel)),

@@ -11,6 +11,7 @@ import 'package:simple_frame_app/tx/camera_settings.dart';
 import 'package:simple_frame_app/rx/photo.dart';
 import 'package:simple_frame_app/simple_frame_app.dart';
 import 'package:simple_frame_app/tx/plain_text.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const MainApp());
 
@@ -44,7 +45,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
   double _exposure = 0.18; // 0.0 <= val <= 1.0
   double _exposureSpeed = 0.5;  // 0.0 <= val <= 1.0
   int _shutterLimit = 16383; // 4 < val < 16383
-  int _analogGainLimit = 1;     // 0 <= val <= 248 TODO actually firmware requires 1.0 <= val <= 248.0
+  int _analogGainLimit = 1;     // 0 <= val <= 248 (actually firmware requires 1.0 <= val <= 248.0)
   double _whiteBalanceSpeed = 0.5;  // 0.0 <= val <= 1.0
 
   MainAppState() {
@@ -365,13 +366,23 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
               child: ListView.builder(
                 itemCount: _codesFound.length,
                 itemBuilder:(context, index) {
-                   // TODO url: display clickable link to open URL on phone in browser
-                   return ListTile(
-                    title: _codesFound[index].type is BarcodeUrl ?
-                      Text((_codesFound[index].value! as BarcodeUrl).url!) :
-                      Text(_codesFound[index].displayValue ?? ''),
-                    subtitle: Text(_codesFound[index].type.name),
-                  );
+                  if (_codesFound[index].type == BarcodeType.url) {
+                    // url: display clickable link to open URL on phone in browser
+                    var barcodeUrl = _codesFound[index].value! as BarcodeUrl;
+                    return ListTile(
+                      onTap: () {
+                        launchUrl(Uri.parse(barcodeUrl.url!));
+                      },
+                      title: Text(barcodeUrl.url!, style: const TextStyle(decoration: TextDecoration.underline),),
+                      subtitle: Text(_codesFound[index].type.name),
+                    );
+                  }
+                  else {
+                    return ListTile(
+                      title: Text(_codesFound[index].displayValue ?? ''),
+                      subtitle: Text(_codesFound[index].type.name)
+                    );
+                  }
                 }
               ),
             ),

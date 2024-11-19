@@ -108,7 +108,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
         meta.size = imageData.length;
         meta.elapsedTimeMs = _stopwatch.elapsedMilliseconds;
 
-        _log.info(() => 'Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
+        _log.fine(() => 'Image file size in bytes: ${imageData.length}, elapsedMs: ${_stopwatch.elapsedMilliseconds}');
 
         setState(() {
           _image = imWidget;
@@ -122,7 +122,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           _stopwatch.start();
           img.Image im = img.decodeJpg(imageData)!;
           _stopwatch.stop();
-          _log.info(() => 'Jpeg decoding took: ${_stopwatch.elapsedMilliseconds} ms');
+          _log.fine(() => 'Jpeg decoding took: ${_stopwatch.elapsedMilliseconds} ms');
 
           // Android mlkit needs NV21 InputImage format
           // iOS mlkit needs bgra8888 InputImage format
@@ -132,14 +132,14 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
           // Frame images are rotated 90 degrees clockwise
           InputImage mlkitImage = ImageMlkitConverter.imageToMlkitInputImage(im, InputImageRotation.rotation90deg);
           _stopwatch.stop();
-          _log.info(() => 'NV21/BGRA8888 conversion took: ${_stopwatch.elapsedMilliseconds} ms');
+          _log.fine(() => 'NV21/BGRA8888 conversion took: ${_stopwatch.elapsedMilliseconds} ms');
 
           // run the qrcode/barcode detector
           _stopwatch.reset();
           _stopwatch.start();
           _codesFound = await barcodeScanner.processImage(mlkitImage);
           _stopwatch.stop();
-          _log.info(() => 'Barcode scanning took: ${_stopwatch.elapsedMilliseconds} ms');
+          _log.fine(() => 'Barcode scanning took: ${_stopwatch.elapsedMilliseconds} ms');
 
           // stop the running loop if a barcode has been found
           if (_codesFound.isNotEmpty) {
@@ -157,12 +157,10 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
               }
             }
 
+            _log.fine(() => 'Codes found: $frameText');
+
             // print the detected barcodes on the Frame display
             await frame!.sendMessage(TxPlainText(msgCode: 0x12, text: frameText.join('\n')));
-
-            // TODO url: print URL on Frame, display clickable in ListView to open URL on phone in browser
-            // TODO non-url: just print data on Frame, in ListView
-            _log.info(_codesFound);
 
             setState(() {
               currentState = ApplicationState.canceling;
@@ -367,6 +365,7 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
               child: ListView.builder(
                 itemCount: _codesFound.length,
                 itemBuilder:(context, index) {
+                   // TODO url: display clickable link to open URL on phone in browser
                    return ListTile(
                     title: _codesFound[index].type is BarcodeUrl ?
                       Text((_codesFound[index].value! as BarcodeUrl).url!) :

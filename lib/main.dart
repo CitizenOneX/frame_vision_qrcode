@@ -7,6 +7,7 @@ import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart
 import 'package:image/image.dart' as img;
 import 'package:image_mlkit_converter/image_mlkit_converter.dart';
 import 'package:logging/logging.dart';
+import 'package:simple_frame_app/text_utils.dart';
 import 'package:simple_frame_app/tx/camera_settings.dart';
 import 'package:simple_frame_app/rx/photo.dart';
 import 'package:simple_frame_app/simple_frame_app.dart';
@@ -161,7 +162,12 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState {
             _log.fine(() => 'Codes found: $frameText');
 
             // print the detected barcodes on the Frame display
-            await frame!.sendMessage(TxPlainText(msgCode: 0x12, text: frameText.join('\n')));
+            await frame!.sendMessage(
+              TxPlainText(
+                msgCode: 0x12,
+                text: TextUtils.wrapText(frameText.join('\n'), 640, 4).join('\n')
+              )
+            );
 
             setState(() {
               currentState = ApplicationState.canceling;

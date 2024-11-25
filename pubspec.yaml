@@ -13,7 +13,7 @@ dependencies:
   image: ^4.0.14
   image_mlkit_converter: ^0.0.1
   logging: ^1.2.0
-  simple_frame_app: ^1.6.1
+  simple_frame_app: ^1.8.0
   url_launcher: ^6.3.1
 
 dev_dependencies:
@@ -26,6 +26,7 @@ flutter:
   assets:
     - packages/simple_frame_app/lua/battery.min.lua
     - packages/simple_frame_app/lua/camera.min.lua
+    - packages/simple_frame_app/lua/code.min.lua
     - packages/simple_frame_app/lua/data.min.lua
     - packages/simple_frame_app/lua/plain_text.min.lua
-    - assets/frame_app.lua
+    - assets/frame_app.min.lua
